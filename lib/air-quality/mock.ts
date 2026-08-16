@@ -1,0 +1,55 @@
+import type { AirQualityObservation } from "@/lib/air-quality/types";
+
+/** Development/demo fixtures only. Never use these as production observations. */
+export const MOCK_OBSERVATIONS: AirQualityObservation[] = [
+  {
+    sourceType: "community",
+    sourceId: "UB-SKH-DEV-01",
+    stationName: "Songinokhairkhan West",
+    latitude: 47.925,
+    longitude: 106.81,
+    pm25: 142.5,
+    pm10: 186.7,
+    observedAt: "2026-08-16T00:30:00.000Z",
+  },
+  {
+    sourceType: "community",
+    sourceId: "UB-CHD-DEV-02",
+    stationName: "Chingeltei North",
+    latitude: 47.945,
+    longitude: 106.92,
+    pm25: 98.2,
+    pm10: 131.4,
+    observedAt: "2026-08-16T00:25:00.000Z",
+  },
+  {
+    sourceType: "official",
+    sourceId: "UB-SBD-DEV-01",
+    stationName: "Sukhbaatar Square Central",
+    latitude: 47.9188,
+    longitude: 106.9176,
+    pm25: 35.4,
+    pm10: 52.1,
+    observedAt: "2026-08-16T00:20:00.000Z",
+  },
+  {
+    sourceType: "official",
+    sourceId: "UB-ZSN-DEV-01",
+    stationName: "Zaisan Observatory",
+    latitude: 47.8864,
+    longitude: 106.913,
+    pm25: 18.1,
+    pm10: 29.6,
+    observedAt: "2026-08-16T00:15:00.000Z",
+  },
+  {
+    sourceType: "community",
+    sourceId: "UB-BZD-DEV-03",
+    stationName: "Bayanzurkh East",
+    latitude: 47.915,
+    longitude: 106.98,
+    pm25: 76.8,
+    pm10: 104.3,
+    observedAt: "2026-08-16T00:10:00.000Z",
+  },
+];
