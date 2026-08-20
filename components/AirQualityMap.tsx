@@ -56,6 +56,14 @@ const METRIC_LABELS: Record<AirQualityMetric, string> = {
   pm25: "PM2.5",
   pm10: "PM10",
 };
+const POPUP_POLLUTANTS = [
+  { metric: "pm25", label: "PM2.5", unit: "µg/m³" },
+  { metric: "pm10", label: "PM10", unit: "µg/m³" },
+  { metric: "o3", label: "Ozone (O3)", unit: "µg/m³" },
+  { metric: "no2", label: "Nitrogen Dioxide (NO2)", unit: "µg/m³" },
+  { metric: "co", label: "Carbon Monoxide (CO)", unit: "mg/m³" },
+  { metric: "so2", label: "Sulfur Dioxide (SO2)", unit: "µg/m³" },
+] as const;
 
 type MarkerTier = "minimal" | "compact" | "detailed";
 
@@ -268,10 +276,13 @@ function createStatusIcon(
   });
 }
 
-function formatMeasurement(value: number | null): string {
-  return value === null || !Number.isFinite(value)
-    ? "N/A"
-    : `${value.toFixed(1)} µg/m³`;
+function formatMeasurement(
+  value: number | null | undefined,
+  unit: string,
+): string {
+  return value === null || value === undefined || !Number.isFinite(value)
+    ? "--"
+    : `${value.toFixed(1)} ${unit}`;
 }
 
 function formatObservedAt(observedAt: string): string {
@@ -322,15 +333,32 @@ function ObservationPopup({
           </p>
         </header>
 
-        <dl className="m-0">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2.5">
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-zinc-300">
-              {METRIC_LABELS[activeMetric]}
-            </dt>
-            <dd className="m-0 mt-1 text-sm font-extrabold text-white">
-              {formatMeasurement(observation[activeMetric])}
-            </dd>
-          </div>
+        <dl className="m-0 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {POPUP_POLLUTANTS.map(({ metric, label, unit }) => {
+            const isActiveMetric = metric === activeMetric;
+
+            return (
+              <div
+                key={metric}
+                className={`rounded-lg border p-2.5 transition ${
+                  isActiveMetric
+                    ? "border-emerald-400/70 bg-emerald-400/10 ring-1 ring-emerald-300/40"
+                    : "border-zinc-800 bg-zinc-900"
+                }`}
+              >
+                <dt
+                  className={`text-[11px] font-semibold uppercase tracking-wide ${
+                    isActiveMetric ? "text-emerald-100" : "text-zinc-300"
+                  }`}
+                >
+                  {label}
+                </dt>
+                <dd className="m-0 mt-1 text-sm font-extrabold text-white">
+                  {formatMeasurement(observation[metric], unit)}
+                </dd>
+              </div>
+            );
+          })}
         </dl>
 
         <footer className="flex items-end justify-between gap-3 border-t border-zinc-800 pt-2.5">
@@ -573,6 +601,7 @@ export default function AirQualityMap({
   const [activeMetric, setActiveMetric] =
     useState<AirQualityMetric>("pm25");
   const [showCommunity, setShowCommunity] = useState(true);
+  const [hasMounted, setHasMounted] = useState(false);
   const [sourceToggleHost, setSourceToggleHost] =
     useState<HTMLElement | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -601,8 +630,13 @@ export default function AirQualityMap({
   }, [theme]);
 
   useEffect(() => {
-    setSourceToggleHost(document.getElementById("aq-source-toggle-slot"));
+    setHasMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    setSourceToggleHost(document.getElementById("aq-source-toggle-slot"));
+  }, [hasMounted]);
 
   const isHistorical = Boolean(selectedTimestamp);
   const isLightTheme = theme === "light";
@@ -712,7 +746,8 @@ export default function AirQualityMap({
         </div>
       </div>
 
-      {sourceToggleHost &&
+      {hasMounted &&
+        sourceToggleHost &&
         createPortal(
           <button
             type="button"

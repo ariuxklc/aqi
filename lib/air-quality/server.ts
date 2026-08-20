@@ -60,7 +60,9 @@ export async function fetchAirQualityObservations(
   let officialQuery = supabase
     .schema("public")
     .from("official_aqi_readings")
-    .select("station_id, station_name, lat, lng, pm25, pm10, observed_at")
+    .select(
+      "station_id, station_name, lat, lng, pm25, pm10, o3, no2, co, so2, observed_at",
+    )
     .order("observed_at", { ascending: false })
     .order("station_id", { ascending: true })
     .limit(MAX_ELIGIBLE_READINGS_PER_TABLE);

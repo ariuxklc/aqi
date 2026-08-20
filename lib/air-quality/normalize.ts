@@ -16,6 +16,10 @@ export interface RawOfficialAqiReading {
   lng: number;
   pm25: number | null;
   pm10: number | null;
+  o3: number | null;
+  no2: number | null;
+  co: number | null;
+  so2: number | null;
   observed_at: string;
 }
 
@@ -69,6 +73,10 @@ export function isRawOfficialAqiReading(
     hasValidCoordinates(reading.lat, reading.lng) &&
     hasValidMeasurement(reading.pm25) &&
     hasValidMeasurement(reading.pm10) &&
+    hasValidMeasurement(reading.o3) &&
+    hasValidMeasurement(reading.no2) &&
+    hasValidMeasurement(reading.co) &&
+    hasValidMeasurement(reading.so2) &&
     typeof reading.observed_at === "string" &&
     Number.isFinite(Date.parse(reading.observed_at))
   );
@@ -100,6 +108,10 @@ export function normalizeOfficialAqiReading(
     longitude: row.lng,
     pm25: row.pm25,
     pm10: row.pm10,
+    o3: row.o3,
+    no2: row.no2,
+    co: row.co,
+    so2: row.so2,
     observedAt: row.observed_at,
   };
 }

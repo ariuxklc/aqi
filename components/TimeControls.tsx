@@ -84,6 +84,7 @@ export default function TimeControls() {
   );
   const [hasPendingScrub, setHasPendingScrub] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
   const [nowInUlaanbaatar, setNowInUlaanbaatar] = useState(() =>
     getUlaanbaatarDateTime(),
   );
@@ -96,6 +97,10 @@ export default function TimeControls() {
   );
   const availableTrackPercent =
     (sliderMaximum / MAX_SNAPSHOT_MINUTES) * 100;
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   useEffect(() => {
     const controlsElement = controlsRef.current;
@@ -230,10 +235,12 @@ export default function TimeControls() {
       aria-label="Historical time controls"
       className={`aq-time-controls relative w-full rounded-xl border border-zinc-800/80 bg-zinc-950/80 text-white shadow-2xl backdrop-blur-md ${isCollapsed ? "p-2 sm:p-4" : "p-4"}`}
     >
-      <div
-        id="aq-source-toggle-slot"
-        className="absolute -top-12 right-0 z-10"
-      />
+      {hasMounted && (
+        <div
+          id="aq-source-toggle-slot"
+          className="absolute -top-12 right-0 z-10"
+        />
+      )}
 
       <button
         type="button"
