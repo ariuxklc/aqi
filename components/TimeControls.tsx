@@ -1,19 +1,14 @@
 "use client";
 
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  Radio,
-  RotateCcw,
-} from "lucide-react";
+import { Radio, RotateCcw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const ULAANBAATAR_OFFSET_MS = 8 * 60 * 60 * 1000;
 const MAX_SNAPSHOT_MINUTES = 23 * 60 + 45;
-const TIME_TICKS = [0, 240, 480, 720, 960, 1200, MAX_SNAPSHOT_MINUTES] as const;
+const WHEEL_ITEM_HEIGHT = 34;
+const WHEEL_PADDING_ITEMS = 1;
+const WHEEL_DRAG_SPEED = 1.12;
 
 interface UlaanbaatarDateTime {
   date: string;
@@ -40,6 +35,53 @@ function formatMinutes(totalMinutes: number): string {
     .padStart(2, "0")}`;
 }
 
+function formatWheelNumber(value: number): string {
+  return value.toString().padStart(2, "0");
+}
+
+function getDateParts(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  return { year, month, day };
+}
+
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function buildDate(year: number, month: number, day: number): string {
+  return [
+    year.toString().padStart(4, "0"),
+    formatWheelNumber(month),
+    formatWheelNumber(day),
+  ].join("-");
+}
+
+function clampDateParts(
+  year: number,
+  month: number,
+  day: number,
+  maxDate: string,
+): string {
+  const maxParts = getDateParts(maxDate);
+  const clampedYear = Math.min(year, maxParts.year);
+  const clampedMonth =
+    clampedYear === maxParts.year
+      ? Math.min(month, maxParts.month)
+      : month;
+  const monthDayLimit =
+    clampedYear === maxParts.year && clampedMonth === maxParts.month
+      ? maxParts.day
+      : getDaysInMonth(clampedYear, clampedMonth);
+  const clampedDay = Math.min(day, monthDayLimit);
+
+  return buildDate(clampedYear, clampedMonth, clampedDay);
+}
+
+function clampDateString(date: string, maxDate: string): string {
+  const parts = getDateParts(date);
+  return clampDateParts(parts.year, parts.month, parts.day, maxDate);
+}
+
 function getMaximumMinutesForDate(
   date: string,
   now: UlaanbaatarDateTime,
@@ -52,15 +94,243 @@ function getMaximumMinutesForDate(
   );
 }
 
+function clampSnapshotMinutes(
+  date: string,
+  minutes: number,
+  now: UlaanbaatarDateTime,
+): number {
+  return Math.min(
+    Math.floor(minutes / 15) * 15,
+    getMaximumMinutesForDate(date, now),
+  );
+}
+
 function toTimestamp(date: string, minutes: number): string {
   const startOfDay = new Date(`${date}T00:00:00+08:00`);
   return new Date(startOfDay.getTime() + minutes * 60_000).toISOString();
 }
 
-function shiftCalendarDate(date: string, dayOffset: number): string {
-  const [year, month, day] = date.split("-").map(Number);
-  const shiftedDate = new Date(Date.UTC(year, month - 1, day + dayOffset));
-  return shiftedDate.toISOString().slice(0, 10);
+interface WheelOption {
+  value: number;
+  label: string;
+}
+
+interface WheelPickerProps {
+  label: string;
+  options: WheelOption[];
+  value: number;
+  onChange: (value: number) => void;
+  ariaLabel: string;
+  className?: string;
+}
+
+function WheelPicker({
+  label,
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  className = "",
+}: WheelPickerProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollEndTimer = useRef<number | null>(null);
+  const isMouseDragging = useRef(false);
+  const lastDragY = useRef(0);
+  const previousValue = useRef(value);
+  const settleTimer = useRef<number | null>(null);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [hasSettled, setHasSettled] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => option.value === value),
+  );
+  const activeIndex = Math.min(options.length - 1, previewIndex);
+  const activeValue = options[activeIndex]?.value ?? value;
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    scroller.scrollTo({
+      top: selectedIndex * WHEEL_ITEM_HEIGHT,
+      behavior: "smooth",
+    });
+  }, [selectedIndex, options.length]);
+
+  useEffect(() => {
+    setPreviewIndex(selectedIndex);
+  }, [selectedIndex, options.length]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollEndTimer.current !== null) {
+        window.clearTimeout(scrollEndTimer.current);
+      }
+      if (settleTimer.current !== null) {
+        window.clearTimeout(settleTimer.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (previousValue.current === value) return;
+
+    previousValue.current = value;
+    setHasSettled(true);
+
+    if (settleTimer.current !== null) {
+      window.clearTimeout(settleTimer.current);
+    }
+    settleTimer.current = window.setTimeout(() => {
+      setHasSettled(false);
+    }, 190);
+  }, [value]);
+
+  function commitCenteredValue() {
+    const scroller = scrollRef.current;
+    if (!scroller || options.length === 0) return;
+
+    const nextIndex = Math.min(
+      options.length - 1,
+      Math.max(0, Math.round(scroller.scrollTop / WHEEL_ITEM_HEIGHT)),
+    );
+    const nextValue = options[nextIndex]?.value;
+
+    if (nextValue !== undefined && nextValue !== value) {
+      onChange(nextValue);
+    }
+  }
+
+  function getNearestIndex(scrollTop: number): number {
+    return Math.min(
+      options.length - 1,
+      Math.max(0, Math.round(scrollTop / WHEEL_ITEM_HEIGHT)),
+    );
+  }
+
+  function updatePreviewFromScroll() {
+    const scroller = scrollRef.current;
+    if (!scroller || options.length === 0) return;
+    setPreviewIndex(getNearestIndex(scroller.scrollTop));
+  }
+
+  function snapToNearestValue() {
+    const scroller = scrollRef.current;
+    if (!scroller || options.length === 0) return;
+
+    const nextIndex = getNearestIndex(scroller.scrollTop);
+    const nextValue = options[nextIndex]?.value;
+
+    setPreviewIndex(nextIndex);
+    scroller.scrollTo({
+      top: nextIndex * WHEEL_ITEM_HEIGHT,
+      behavior: "smooth",
+    });
+
+    if (nextValue !== undefined && nextValue !== value) {
+      onChange(nextValue);
+    }
+  }
+
+  function handleScroll() {
+    updatePreviewFromScroll();
+    if (isMouseDragging.current) return;
+
+    if (scrollEndTimer.current !== null) {
+      window.clearTimeout(scrollEndTimer.current);
+    }
+    scrollEndTimer.current = window.setTimeout(snapToNearestValue, 80);
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "touch" || event.button !== 0) return;
+
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    isMouseDragging.current = true;
+    setIsDragging(true);
+    lastDragY.current = event.clientY;
+    scroller.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const scroller = scrollRef.current;
+    if (!isMouseDragging.current || !scroller) return;
+
+    const deltaY = (lastDragY.current - event.clientY) * WHEEL_DRAG_SPEED;
+    lastDragY.current = event.clientY;
+    scroller.scrollTop += deltaY;
+    updatePreviewFromScroll();
+    event.preventDefault();
+  }
+
+  function finishPointerDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const scroller = scrollRef.current;
+    if (!isMouseDragging.current || !scroller) return;
+
+    isMouseDragging.current = false;
+    setIsDragging(false);
+    if (scroller.hasPointerCapture(event.pointerId)) {
+      scroller.releasePointerCapture(event.pointerId);
+    }
+    snapToNearestValue();
+  }
+
+  return (
+    <div className={`aq-wheel-column min-w-0 ${className}`}>
+      <span className="sr-only">
+        {label}
+      </span>
+      <div
+        ref={scrollRef}
+        role="listbox"
+        aria-label={ariaLabel}
+        aria-activedescendant={`${ariaLabel}-${activeValue}`}
+        tabIndex={0}
+        onScroll={handleScroll}
+        onBlur={commitCenteredValue}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishPointerDrag}
+        onPointerCancel={finishPointerDrag}
+        className={`aq-wheel-scroller relative z-10 cursor-grab select-none overflow-y-auto overscroll-contain px-0.5 text-center tabular-nums active:cursor-grabbing ${isDragging ? "aq-wheel-scroller--dragging" : ""}`}
+      >
+        <div
+          aria-hidden="true"
+          style={{ height: WHEEL_ITEM_HEIGHT * WHEEL_PADDING_ITEMS }}
+        />
+        {options.map((option, optionIndex) => {
+          const distance = Math.abs(optionIndex - activeIndex);
+          const isSelected = optionIndex === activeIndex;
+
+          return (
+            <div
+              id={`${ariaLabel}-${option.value}`}
+              key={option.value}
+              role="option"
+              aria-selected={isSelected}
+              className={`aq-wheel-item flex items-center justify-center font-semibold transition-all duration-150 ${
+                isSelected
+                  ? `scale-100 text-[22px] font-black text-emerald-400 opacity-100 ${hasSettled ? "aq-wheel-item--settled" : ""}`
+                  : distance === 1
+                    ? "scale-90 text-[13px] text-gray-400 opacity-40"
+                    : "scale-75 text-[11px] text-gray-400 opacity-15"
+              }`}
+            >
+              {option.label}
+            </div>
+          );
+        })}
+        <div
+          aria-hidden="true"
+          style={{ height: WHEEL_ITEM_HEIGHT * WHEEL_PADDING_ITEMS }}
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function TimeControls() {
@@ -71,14 +341,23 @@ export default function TimeControls() {
   const handledDrawerGesture = useRef(false);
   const selectedTimestamp = searchParams.get("timestamp");
   const [selectedDate, setSelectedDate] = useState(
-    () => getUlaanbaatarDateTime(selectedTimestamp).date,
+    () => {
+      const now = getUlaanbaatarDateTime();
+      return clampDateString(
+        getUlaanbaatarDateTime(selectedTimestamp).date,
+        now.date,
+      );
+    },
   );
   const [selectedMinutes, setSelectedMinutes] = useState(
     () => {
+      const now = getUlaanbaatarDateTime();
       const target = getUlaanbaatarDateTime(selectedTimestamp);
-      return Math.min(
+      const date = clampDateString(target.date, now.date);
+      return clampSnapshotMinutes(
+        date,
         target.minutes,
-        getMaximumMinutesForDate(target.date, getUlaanbaatarDateTime()),
+        now,
       );
     },
   );
@@ -95,8 +374,74 @@ export default function TimeControls() {
     selectedDate,
     nowInUlaanbaatar,
   );
-  const availableTrackPercent =
-    (sliderMaximum / MAX_SNAPSHOT_MINUTES) * 100;
+  const selectedDateParts = getDateParts(selectedDate);
+  const selectedHour = Math.floor(selectedMinutes / 60);
+  const selectedMinute = selectedMinutes % 60;
+  const maxDateParts = getDateParts(nowInUlaanbaatar.date);
+
+  const yearOptions = useMemo<WheelOption[]>(() => {
+    const startYear = Math.max(2020, maxDateParts.year - 6);
+    return Array.from(
+      { length: maxDateParts.year - startYear + 1 },
+      (_, index) => {
+        const year = startYear + index;
+        return { value: year, label: year.toString() };
+      },
+    );
+  }, [maxDateParts.year]);
+
+  const monthOptions = useMemo<WheelOption[]>(() => {
+    const maxMonth =
+      selectedDateParts.year === maxDateParts.year ? maxDateParts.month : 12;
+    return Array.from({ length: maxMonth }, (_, index) => {
+      const month = index + 1;
+      return { value: month, label: formatWheelNumber(month) };
+    });
+  }, [maxDateParts.month, maxDateParts.year, selectedDateParts.year]);
+
+  const dayOptions = useMemo<WheelOption[]>(() => {
+    const daysInMonth = getDaysInMonth(
+      selectedDateParts.year,
+      selectedDateParts.month,
+    );
+    const maxDay =
+      selectedDateParts.year === maxDateParts.year &&
+      selectedDateParts.month === maxDateParts.month
+        ? maxDateParts.day
+        : daysInMonth;
+
+    return Array.from({ length: maxDay }, (_, index) => {
+      const day = index + 1;
+      return { value: day, label: formatWheelNumber(day) };
+    });
+  }, [
+    maxDateParts.day,
+    maxDateParts.month,
+    maxDateParts.year,
+    selectedDateParts.month,
+    selectedDateParts.year,
+  ]);
+
+  const hourOptions = useMemo<WheelOption[]>(() => {
+    const maxHour = Math.floor(sliderMaximum / 60);
+    return Array.from({ length: maxHour + 1 }, (_, hour) => ({
+      value: hour,
+      label: formatWheelNumber(hour),
+    }));
+  }, [sliderMaximum]);
+
+  const minuteOptions = useMemo<WheelOption[]>(() => {
+    const maxMinuteForHour =
+      selectedHour === Math.floor(sliderMaximum / 60)
+        ? sliderMaximum % 60
+        : 45;
+    return [0, 15, 30, 45]
+      .filter((minute) => minute <= maxMinuteForHour)
+      .map((minute) => ({
+        value: minute,
+        label: formatWheelNumber(minute),
+      }));
+  }, [selectedHour, sliderMaximum]);
 
   useEffect(() => {
     setHasMounted(true);
@@ -138,12 +483,15 @@ export default function TimeControls() {
   }, []);
 
   useEffect(() => {
+    const now = getUlaanbaatarDateTime();
     const target = getUlaanbaatarDateTime(selectedTimestamp);
-    setSelectedDate(target.date);
+    const date = clampDateString(target.date, now.date);
+    setSelectedDate(date);
     setSelectedMinutes(
-      Math.min(
+      clampSnapshotMinutes(
+        date,
         target.minutes,
-        getMaximumMinutesForDate(target.date, getUlaanbaatarDateTime()),
+        now,
       ),
     );
     setHasPendingScrub(false);
@@ -167,27 +515,41 @@ export default function TimeControls() {
 
   function handleDateChange(date: string) {
     if (!date) return;
-    const nextMinutes = Math.min(
+    const nextMinutes = clampSnapshotMinutes(
+      date,
       selectedMinutes,
-      getMaximumMinutesForDate(date, getUlaanbaatarDateTime()),
+      getUlaanbaatarDateTime(),
     );
     setSelectedDate(date);
     setSelectedMinutes(nextMinutes);
     setHistoricalTime(date, nextMinutes);
   }
 
-  function moveDateBy(dayOffset: number) {
-    handleDateChange(shiftCalendarDate(selectedDate, dayOffset));
+  function handleDateWheelChange(
+    part: "year" | "month" | "day",
+    value: number,
+  ) {
+    const parts = getDateParts(selectedDate);
+    const nextDate = clampDateParts(
+      part === "year" ? value : parts.year,
+      part === "month" ? value : parts.month,
+      part === "day" ? value : parts.day,
+      nowInUlaanbaatar.date,
+    );
+    handleDateChange(nextDate);
   }
 
-  function handleTimeChange(minutes: number) {
-    setSelectedMinutes(minutes);
+  function handleTimeWheelChange(part: "hour" | "minute", value: number) {
+    const nextHour = part === "hour" ? value : selectedHour;
+    const nextMinute = part === "minute" ? value : selectedMinute;
+    const nextMinutes = clampSnapshotMinutes(
+      selectedDate,
+      nextHour * 60 + nextMinute,
+      nowInUlaanbaatar,
+    );
+    setSelectedMinutes(nextMinutes);
     setHasPendingScrub(true);
-  }
-
-  function commitTimeChange(minutes: number) {
-    setSelectedMinutes(minutes);
-    setHistoricalTime(selectedDate, minutes);
+    setHistoricalTime(selectedDate, nextMinutes);
   }
 
   function returnToLiveMode() {
@@ -233,7 +595,7 @@ export default function TimeControls() {
     <section
       ref={controlsRef}
       aria-label="Historical time controls"
-      className={`aq-time-controls relative w-full rounded-xl border border-zinc-800/80 bg-zinc-950/80 text-white shadow-2xl backdrop-blur-md ${isCollapsed ? "p-2 sm:p-4" : "p-4"}`}
+      className={`aq-time-controls relative mx-auto w-full max-w-[44rem] rounded-xl border border-zinc-800/70 bg-zinc-950/75 text-white shadow-xl shadow-black/25 backdrop-blur-md ${isCollapsed ? "p-2 sm:p-3" : "p-2.5 sm:p-3"}`}
     >
       {hasMounted && (
         <div
@@ -262,127 +624,98 @@ export default function TimeControls() {
 
       <div
         id="historical-control-content"
-        className={`${isCollapsed ? "hidden sm:flex" : "flex"} flex-col gap-4 lg:flex-row lg:items-end`}
+        className={`${isCollapsed ? "hidden sm:flex" : "flex"} w-full flex-col gap-2`}
       >
-        <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-end">
-          <div className="w-full sm:min-w-72">
-            <label
-              className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-300"
-              htmlFor="snapshot-date"
-            >
-              <CalendarDays aria-hidden="true" className="h-4 w-4 text-emerald-400" />
-              Snapshot date
-            </label>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => moveDateBy(-1)}
-                aria-label="Previous day"
-                className="aq-date-step grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-zinc-700 bg-zinc-900 text-white transition hover:border-emerald-500 hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-              >
-                <ChevronLeft aria-hidden="true" className="h-5 w-5" />
-              </button>
-              <input
-                id="snapshot-date"
-                type="date"
-                value={selectedDate}
-                max={nowInUlaanbaatar.date}
-                onChange={(event) => handleDateChange(event.target.value)}
-                className="dark-date-input h-11 min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-center text-sm font-semibold text-white outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/30"
-              />
-              <button
-                type="button"
-                onClick={() => moveDateBy(1)}
-                disabled={selectedDate >= nowInUlaanbaatar.date}
-                aria-label="Next day"
-                className="aq-date-step grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-zinc-700 bg-zinc-900 text-white transition hover:border-emerald-500 hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:cursor-not-allowed disabled:opacity-35"
-              >
-                <ChevronRight aria-hidden="true" className="h-5 w-5" />
-              </button>
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-black tabular-nums text-zinc-100">
+              {selectedDate} <span className="text-zinc-500">·</span>{" "}
+              {formatMinutes(selectedMinutes)}
+            </p>
           </div>
-
           <button
             type="button"
             onClick={returnToLiveMode}
-            className="inline-flex h-11 items-center justify-center gap-2 self-center rounded-lg bg-emerald-600 px-5 text-sm font-bold text-white shadow-lg shadow-emerald-950/40 transition hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:ring-offset-zinc-950 sm:self-auto"
+            className="inline-flex h-6.5 items-center justify-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 text-[11px] font-bold text-emerald-100 shadow-sm shadow-emerald-950/20 transition hover:border-emerald-300/60 hover:bg-emerald-400/15 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:ring-offset-zinc-950"
           >
             {isViewingSnapshot ? (
-              <RotateCcw aria-hidden="true" className="h-4 w-4" />
+              <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
             ) : (
-              <Radio aria-hidden="true" className="h-4 w-4" />
+              <Radio aria-hidden="true" className="h-3.5 w-3.5" />
             )}
-            Live Mode
+            Live
           </button>
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <label
-              htmlFor="snapshot-time"
-              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-300"
-            >
-              <Clock3 aria-hidden="true" className="h-4 w-4 text-emerald-400" />
-              24-hour time scrubber
-            </label>
-            <div className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-sm text-emerald-100" role="status">
-              {isViewingSnapshot ? (
-                <>
-                  Viewing Snapshot at{" "}
-                  <strong className="font-extrabold text-white">
-                    {formatMinutes(selectedMinutes)}
-                  </strong>
-                </>
-              ) : (
-                <strong className="font-extrabold text-emerald-300">
-                  Viewing live conditions
-                </strong>
-              )}
+        <div className="grid gap-2.5 md:grid-cols-[minmax(0,1.35fr)_minmax(12rem,0.74fr)]">
+          <div className="min-w-0">
+            <div className="mb-0.5 grid grid-cols-[1.32fr_0.84fr_0.84fr] px-2 text-center text-[8.5px] font-bold uppercase tracking-[0.12em] text-zinc-500">
+              <span>Year</span>
+              <span>Month</span>
+              <span>Day</span>
+            </div>
+            <div className="aq-wheel-chassis relative overflow-hidden rounded-xl border border-white/10 bg-zinc-950/90 px-1.5 py-1.5 shadow-lg shadow-black/25 sm:px-2.5">
+              <div aria-hidden="true" className="aq-wheel-track absolute inset-x-0 top-1/2 h-[34px] -translate-y-1/2 border-y border-white/10 bg-emerald-400/10" />
+              <div className="aq-wheel-grid relative z-10 grid grid-cols-[1.32fr_0.84fr_0.84fr] items-center gap-0.5 sm:gap-1.5">
+                <WheelPicker
+                  label="Year"
+                  options={yearOptions}
+                  value={selectedDateParts.year}
+                  onChange={(value) => handleDateWheelChange("year", value)}
+                  ariaLabel="snapshot-year"
+                  className="min-w-[3.4rem]"
+                />
+                <WheelPicker
+                  label="Month"
+                  options={monthOptions}
+                  value={selectedDateParts.month}
+                  onChange={(value) => handleDateWheelChange("month", value)}
+                  ariaLabel="snapshot-month"
+                />
+                <WheelPicker
+                  label="Day"
+                  options={dayOptions}
+                  value={selectedDateParts.day}
+                  onChange={(value) => handleDateWheelChange("day", value)}
+                  ariaLabel="snapshot-day"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="relative h-[22px] w-full">
-            <div
-              aria-hidden="true"
-              className="absolute inset-x-0 top-2 h-1.5 rounded-full border border-zinc-700 bg-zinc-800"
-            />
-            <input
-              id="snapshot-time"
-              type="range"
-              min="0"
-              max={sliderMaximum}
-              step="15"
-              value={selectedMinutes}
-              disabled={sliderMaximum === 0}
-              onChange={(event) => handleTimeChange(Number(event.target.value))}
-              onPointerUp={(event) =>
-                commitTimeChange(Number(event.currentTarget.value))
-              }
-              onPointerCancel={(event) =>
-                commitTimeChange(Number(event.currentTarget.value))
-              }
-              onKeyUp={(event) =>
-                commitTimeChange(Number(event.currentTarget.value))
-              }
-              onBlur={(event) =>
-                commitTimeChange(Number(event.currentTarget.value))
-              }
-              className="time-scrubber absolute left-0 top-0 block disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ width: `${availableTrackPercent}%` }}
-              aria-valuetext={formatMinutes(selectedMinutes)}
-            />
+          <div className="min-w-0">
+            <div className="mb-0.5 grid grid-cols-[1fr_auto_1fr] px-2 text-center text-[8.5px] font-bold uppercase tracking-[0.12em] text-zinc-500">
+              <span>Hour</span>
+              <span className="w-4" />
+              <span>Min</span>
+            </div>
+            <div className="aq-wheel-chassis relative overflow-hidden rounded-xl border border-white/10 bg-zinc-950/90 px-1.5 py-1.5 shadow-lg shadow-black/25 sm:px-2.5">
+              <div aria-hidden="true" className="aq-wheel-track absolute inset-x-0 top-1/2 h-[34px] -translate-y-1/2 border-y border-white/10 bg-emerald-400/10" />
+              <div className="aq-wheel-grid relative z-10 grid grid-cols-[1fr_auto_1fr] items-center gap-0.5 sm:gap-1.5">
+                <WheelPicker
+                  label="Hour"
+                  options={hourOptions}
+                  value={selectedHour}
+                  onChange={(value) => handleTimeWheelChange("hour", value)}
+                  ariaLabel="snapshot-hour"
+                />
+                <span aria-hidden="true" className="aq-wheel-divider w-3.5 self-center text-center text-lg font-black text-zinc-500">
+                  :
+                </span>
+                <WheelPicker
+                  label="Minute"
+                  options={minuteOptions}
+                  value={selectedMinute}
+                  onChange={(value) => handleTimeWheelChange("minute", value)}
+                  ariaLabel="snapshot-minute"
+                />
+              </div>
+            </div>
           </div>
-          <div className="relative mt-1.5 h-4 text-[10px] font-semibold tabular-nums text-zinc-200 sm:text-xs" aria-hidden="true">
-            {TIME_TICKS.map((tick) => (
-              <span
-                key={tick}
-                className={`absolute -translate-x-1/2 first:translate-x-0 last:-translate-x-full ${tick > sliderMaximum ? "text-zinc-600" : "text-zinc-200"}`}
-                style={{ left: `${(tick / MAX_SNAPSHOT_MINUTES) * 100}%` }}
-              >
-                {formatMinutes(tick)}
-              </span>
-            ))}
-          </div>
+        </div>
+
+        <div className="sr-only" role="status">
+          {isViewingSnapshot ? "Historical snapshot selected" : "Live conditions selected"}
         </div>
       </div>
     </section>

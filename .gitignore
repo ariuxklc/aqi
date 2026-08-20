@@ -23,6 +23,9 @@
 # misc
 .DS_Store
 *.pem
+/data/
+/tmp/
+/scripts/seed-official-aqi.mjs
 
 # debug
 npm-debug.log*
