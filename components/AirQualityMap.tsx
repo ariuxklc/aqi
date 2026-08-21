@@ -6,9 +6,7 @@ import L from "leaflet";
 import {
   AlertTriangle,
   Database,
-  Moon,
   ShieldCheck,
-  Sun,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -23,6 +21,7 @@ import {
 } from "react-leaflet";
 
 import { getFreshnessStatus } from "@/lib/air-quality/freshness";
+import { useTheme } from "@/components/ThemeProvider";
 import {
   getMetricThresholds,
   getPollutionSeverity,
@@ -40,7 +39,6 @@ interface AirQualityMapProps {
 const MAP_CENTER: [number, number] = [47.9184, 106.9177];
 const MAX_CANVAS_PIXEL_RATIO = 2;
 const METERS_PER_LATITUDE_DEGREE = 111_320;
-const THEME_STORAGE_KEY = "ub-aq-theme-v2";
 const DEFAULT_MAP_ZOOM = 12;
 const COORDINATE_GROUPING_FACTOR = 10_000;
 const MARKER_DISPERSAL_RADIUS_DEGREES = 0.0002;
@@ -194,6 +192,18 @@ function getDrawableMetricObservations(
   });
 }
 
+/**
+ * A marker can remain visible when a station is known but the selected
+ * snapshot has no value for the metric currently being viewed.
+ */
+function hasMetricObservation(
+  observation: AirQualityObservation,
+  metric: AirQualityMetric,
+): boolean {
+  const value = observation[metric];
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 function getMarkerConfig(
   observation: AirQualityObservation,
   zoomLevel: number,
@@ -204,10 +214,14 @@ function getMarkerConfig(
     observation[activeMetric],
     activeMetric,
   ).hex;
+  const hasData = hasMetricObservation(observation, activeMetric);
   const isOfficial = observation.sourceType === "official";
+  const isSimulated = observation.dataStatus === "simulated";
   const markerSourceClass = isOfficial
     ? "aq-tier-marker--official"
     : "aq-tier-marker--community";
+  const simulationClass = isSimulated ? "aq-tier-marker--simulated" : "";
+  const dataClass = hasData ? "" : "aq-tier-marker--no-data";
 
   if (zoomLevel <= 10) {
     const diameter = isOfficial ? 8 : 5;
@@ -215,7 +229,7 @@ function getMarkerConfig(
       tier: "minimal",
       iconWidth: diameter,
       iconHeight: diameter,
-      html: `<span class="aq-tier-marker aq-tier-marker--minimal ${markerSourceClass}" style="--status-color:${color}"></span>`,
+      html: `<span class="aq-tier-marker aq-tier-marker--minimal ${markerSourceClass} ${simulationClass} ${dataClass}" style="--status-color:${color}"></span>`,
     };
   }
 
@@ -225,7 +239,7 @@ function getMarkerConfig(
       tier: "compact",
       iconWidth: diameter,
       iconHeight: diameter,
-      html: `<span class="aq-tier-marker aq-tier-marker--compact ${markerSourceClass}" style="--status-color:${color}"><span class="aq-tier-marker__compact-core"></span></span>`,
+      html: `<span class="aq-tier-marker aq-tier-marker--compact ${markerSourceClass} ${simulationClass} ${dataClass}" style="--status-color:${color}"><span class="aq-tier-marker__compact-core"></span></span>`,
     };
   }
 
@@ -246,8 +260,8 @@ function getMarkerConfig(
     tier: "detailed",
     iconWidth: diameter,
     iconHeight: diameter,
-    html: `<div class="aq-tier-marker aq-tier-marker--detailed ${markerSourceClass}" style="--status-color:${color};--device-size:${deviceSize}px;--source-size:${sourceSize}px;--source-offset:${sourceOffset}px;--source-font-size:${sourceFontSize}px">
-      ${isActive ? '<span class="aq-tier-marker__pulse animate-ping"></span>' : ""}
+    html: `<div class="aq-tier-marker aq-tier-marker--detailed ${markerSourceClass} ${simulationClass} ${dataClass}" style="--status-color:${color};--device-size:${deviceSize}px;--source-size:${sourceSize}px;--source-offset:${sourceOffset}px;--source-font-size:${sourceFontSize}px">
+      ${isActive && hasData ? '<span class="aq-tier-marker__pulse animate-ping"></span>' : ""}
       <span class="aq-tier-marker__detailed-core">${DEVICE_ICON_SVG}</span>
       <span class="aq-tier-marker__source ${sourceClass}">${sourceCode}</span>
     </div>`,
@@ -308,8 +322,11 @@ function ObservationPopup({
     observation.observedAt,
     referenceTime,
   );
-  const sourceLabel =
-    observation.sourceType === "official" ? "Official" : "Community";
+  const isSimulated = observation.dataStatus === "simulated";
+  const sourceTag = isSimulated
+    ? "[PROPOSED COMMUNITY NODE]"
+    : "[OFFICIAL MACRO STATION]";
+  const hasData = hasMetricObservation(observation, activeMetric);
 
   return (
     <Popup>
@@ -317,21 +334,33 @@ function ObservationPopup({
         <header className="space-y-1.5">
           <span
             className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${
-              observation.sourceType === "official"
-                ? "border-sky-400/30 bg-sky-400/15 text-sky-200"
-                : "border-amber-400/30 bg-amber-400/15 text-amber-200"
+              isSimulated
+                ? "aq-popup-tag--simulated border-amber-400/30 bg-amber-400/15 text-amber-200"
+                : "aq-popup-tag--official border-sky-400/30 bg-sky-400/15 text-sky-200"
             }`}
           >
-            {sourceLabel}
+            {sourceTag}
           </span>
-          <h2 className="m-0 text-base font-bold text-white">
+          <h2 className="aq-popup-title m-0 text-base font-bold text-white">
             {observation.stationName ?? observation.sourceId}
           </h2>
-          <p className="m-0 text-xs font-medium text-zinc-300">
+          <p className="aq-popup-subtitle m-0 text-xs font-medium text-zinc-300">
             {observation.sourceType === "official" ? "Station ID" : "Sensor ID"}
             : {observation.sourceId}
           </p>
+          {!hasData && (
+            <span className="aq-no-data-pill inline-flex rounded-full border border-zinc-600 bg-zinc-800 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.08em] text-zinc-200">
+              [NO DATA AT THIS TIME]
+            </span>
+          )}
         </header>
+
+        {isSimulated && (
+          <p className="aq-popup-note m-0 rounded-md border border-amber-400/25 bg-amber-400/10 px-2.5 py-2 text-[11px] font-medium leading-4 text-amber-100">
+            Scenario estimate for the proposed network. It is not a deployed
+            sensor reading.
+          </p>
+        )}
 
         <dl className="m-0 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {POPUP_POLLUTANTS.map(({ metric, label, unit }) => {
@@ -340,20 +369,20 @@ function ObservationPopup({
             return (
               <div
                 key={metric}
-                className={`rounded-lg border p-2.5 transition ${
+                className={`aq-pollutant-cell rounded-lg border p-2.5 transition ${
                   isActiveMetric
-                    ? "border-emerald-400/70 bg-emerald-400/10 ring-1 ring-emerald-300/40"
+                    ? "aq-pollutant-cell--active border-emerald-400/70 bg-emerald-400/10 ring-1 ring-emerald-300/40"
                     : "border-zinc-800 bg-zinc-900"
                 }`}
               >
                 <dt
-                  className={`text-[11px] font-semibold uppercase tracking-wide ${
+                  className={`aq-pollutant-label text-[11px] font-semibold uppercase tracking-wide ${
                     isActiveMetric ? "text-emerald-100" : "text-zinc-300"
                   }`}
                 >
                   {label}
                 </dt>
-                <dd className="m-0 mt-1 text-sm font-extrabold text-white">
+                <dd className="aq-pollutant-value m-0 mt-1 text-sm font-extrabold text-white">
                   {formatMeasurement(observation[metric], unit)}
                 </dd>
               </div>
@@ -361,8 +390,8 @@ function ObservationPopup({
           })}
         </dl>
 
-        <footer className="flex items-end justify-between gap-3 border-t border-zinc-800 pt-2.5">
-          <time className="text-[11px] font-medium leading-4 text-zinc-300">
+        <footer className="aq-popup-footer flex items-end justify-between gap-3 border-t border-zinc-800 pt-2.5">
+          <time className="aq-popup-time text-[11px] font-medium leading-4 text-zinc-300">
             Observed {formatObservedAt(observation.observedAt)}
           </time>
           <span
@@ -539,8 +568,13 @@ function ObservationMarkers({
   return (
     <>
       {positionedObservations.map(({ observation, renderPosition }) => {
-        const sourceLabel =
-          observation.sourceType === "official" ? "Official" : "Community";
+        const sourceTag =
+          observation.dataStatus === "simulated"
+            ? "[PROPOSED COMMUNITY NODE]"
+            : "[OFFICIAL MACRO STATION]";
+        const hasData = hasMetricObservation(observation, activeMetric);
+        const stationName = observation.stationName ?? observation.sourceId;
+        const dataStatus = hasData ? "" : " [NO DATA AT THIS TIME]";
 
         return (
           <Marker
@@ -552,9 +586,9 @@ function ObservationMarkers({
               activeMetric,
               selectedTimestamp,
             )}
-            opacity={0.65}
+            opacity={hasData ? 1 : 0.5}
             zIndexOffset={observation.sourceType === "official" ? 1000 : 0}
-            title={`${sourceLabel}: ${observation.stationName ?? observation.sourceId}`}
+            title={`${sourceTag} ${stationName}${dataStatus}`}
           >
             <ObservationPopup
               observation={observation}
@@ -601,15 +635,11 @@ export default function AirQualityMap({
   const [activeMetric, setActiveMetric] =
     useState<AirQualityMetric>("pm25");
   const [showCommunity, setShowCommunity] = useState(true);
+  const [isMapReady, setIsMapReady] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
   const [sourceToggleHost, setSourceToggleHost] =
     useState<HTMLElement | null>(null);
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
-    if (typeof window === "undefined") return "light";
-    return window.localStorage.getItem(THEME_STORAGE_KEY) === "dark"
-      ? "dark"
-      : "light";
-  });
+  const { theme } = useTheme();
   const validObservations = useMemo(
     () => observations.filter(hasValidCoordinates),
     [observations],
@@ -625,21 +655,37 @@ export default function AirQualityMap({
   );
 
   useEffect(() => {
-    document.documentElement.classList.toggle("light-mode", theme === "light");
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme]);
-
-  useEffect(() => {
     setHasMounted(true);
   }, []);
 
   useEffect(() => {
     if (!hasMounted) return;
-    setSourceToggleHost(document.getElementById("aq-source-toggle-slot"));
+
+    const updateSourceToggleHost = () => {
+      const nextHost = document.getElementById("aq-source-toggle-slot");
+      setSourceToggleHost((currentHost) =>
+        currentHost === nextHost ? currentHost : nextHost,
+      );
+    };
+
+    const observer = new MutationObserver(updateSourceToggleHost);
+    observer.observe(document.body, { childList: true, subtree: true });
+    updateSourceToggleHost();
+
+    return () => observer.disconnect();
   }, [hasMounted]);
 
   const isHistorical = Boolean(selectedTimestamp);
   const isLightTheme = theme === "light";
+  const officialCount = visibleObservations.filter(
+    (observation) => observation.sourceType === "official",
+  ).length;
+  const proposedCount = visibleObservations.filter(
+    (observation) => observation.dataStatus === "simulated",
+  ).length;
+  const noDataCount = visibleObservations.filter(
+    (observation) => !hasMetricObservation(observation, activeMetric),
+  ).length;
 
   return (
     <div
@@ -655,71 +701,73 @@ export default function AirQualityMap({
         zoom={DEFAULT_MAP_ZOOM}
         className={`h-full w-full ${isLightTheme ? "aq-map-light" : "aq-map-dark"}`}
         zoomControl={false}
+        whenReady={() => setIsMapReady(true)}
       >
-        <MapThemeClass isLightTheme={isLightTheme} />
-        <TileLayer
-          key={isLightTheme ? "light-basemap" : "dark-basemap"}
-          url={isLightTheme ? LIGHT_TILE_URL : DARK_TILE_URL}
-          attribution={
-            isLightTheme ? LIGHT_TILE_ATTRIBUTION : DARK_TILE_ATTRIBUTION
-          }
-          className={isLightTheme ? "aq-basemap-light" : "aq-basemap-dark"}
-          opacity={isLightTheme ? 1 : 0.88}
-          maxZoom={20}
-        />
-        <ZoomControl position="bottomright" />
-        <MetricAuraLayer
-          observations={visibleObservations}
-          activeMetric={activeMetric}
-        />
-        <ObservationMarkers
-          observations={visibleObservations}
-          activeMetric={activeMetric}
-          selectedTimestamp={selectedTimestamp}
-        />
+        {isMapReady && (
+          <>
+            <MapThemeClass isLightTheme={isLightTheme} />
+            <TileLayer
+              key={isLightTheme ? "light-basemap" : "dark-basemap"}
+              url={isLightTheme ? LIGHT_TILE_URL : DARK_TILE_URL}
+              attribution={
+                isLightTheme ? LIGHT_TILE_ATTRIBUTION : DARK_TILE_ATTRIBUTION
+              }
+              className={isLightTheme ? "aq-basemap-light" : "aq-basemap-dark"}
+              opacity={isLightTheme ? 1 : 0.88}
+              maxZoom={20}
+            />
+            <ZoomControl position="bottomright" />
+            <MetricAuraLayer
+              observations={visibleObservations}
+              activeMetric={activeMetric}
+            />
+            <ObservationMarkers
+              observations={visibleObservations}
+              activeMetric={activeMetric}
+              selectedTimestamp={selectedTimestamp}
+            />
+          </>
+        )}
       </MapContainer>
 
       <section
         aria-label="Map status"
-        className="aq-map-status pointer-events-none absolute left-3 top-3 z-[900] max-w-[calc(100%-13rem)] rounded-lg border border-zinc-700/80 bg-zinc-950/90 px-3 py-2 text-xs text-zinc-200 shadow-xl backdrop-blur-md"
+        className="aq-map-status pointer-events-none absolute left-3 top-16 z-[900] max-w-[calc(100%-1.5rem)] rounded-lg border border-zinc-700/80 bg-zinc-950/90 px-2.5 py-1.5 text-xs text-zinc-200 shadow-xl backdrop-blur-md sm:left-16 sm:top-3 sm:max-w-none"
       >
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="inline-flex items-center gap-1.5 font-semibold">
-            <Database aria-hidden="true" className="h-3.5 w-3.5" />
-            Observations shown: {visibleObservations.length}
+            <Database aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            Stations shown: {visibleObservations.length}
           </span>
+          <span className="hidden font-semibold text-sky-200 sm:inline">
+            {officialCount} official
+          </span>
+          <span className="hidden font-semibold text-amber-200 sm:inline">
+            {proposedCount} community
+          </span>
+          {noDataCount > 0 && (
+            <span className="hidden font-semibold text-zinc-300 sm:inline">
+              {noDataCount} no data
+            </span>
+          )}
           {isHistorical && (
-            <span className="inline-flex items-center gap-1.5 font-semibold text-amber-300">
-              <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />
-              Historical view — not live conditions
+            <span className="inline-flex items-center gap-1 font-semibold text-amber-300 sm:border-l sm:border-zinc-700/80 sm:pl-2.5">
+              <AlertTriangle aria-hidden="true" className="h-3 w-3 shrink-0" />
+              Historical view
             </span>
           )}
         </div>
         {notice && (
           <p
             role={noticeIsDevelopmentFixture ? "status" : "alert"}
-            className={`mt-1.5 border-t pt-1.5 text-[11px] ${noticeIsDevelopmentFixture ? "border-violet-400/30 text-violet-200" : "border-amber-400/30 text-amber-200"}`}
+            className={`mt-1 border-t pt-1 text-[11px] ${noticeIsDevelopmentFixture ? "border-violet-400/30 text-violet-200" : "border-amber-400/30 text-amber-200"}`}
           >
             {notice}
           </p>
         )}
       </section>
 
-      <div className="absolute right-3 top-3 z-[900] flex items-center gap-2 sm:right-4">
-        <button
-          type="button"
-          onClick={() => setTheme(isLightTheme ? "dark" : "light")}
-          aria-label="Dark mode"
-          aria-pressed={!isLightTheme}
-          className={`aq-theme-toggle grid h-10 w-10 shrink-0 place-items-center rounded-lg border shadow-xl backdrop-blur-md transition focus:outline-none focus:ring-2 focus:ring-emerald-400 ${isLightTheme ? "border-zinc-300 bg-white/90 text-zinc-900 hover:bg-zinc-100" : "border-zinc-700/80 bg-zinc-950/90 text-zinc-100 hover:bg-zinc-800"}`}
-        >
-          {isLightTheme ? (
-            <Moon aria-hidden="true" className="h-5 w-5" />
-          ) : (
-            <Sun aria-hidden="true" className="h-5 w-5" />
-          )}
-        </button>
-
+      <div className="absolute right-3 top-3 z-[900] sm:right-4">
         <div
           role="group"
           aria-label="Heatmap metric"
@@ -752,7 +800,11 @@ export default function AirQualityMap({
           <button
             type="button"
             onClick={() => setShowCommunity((current) => !current)}
-            aria-label="Official stations only"
+            aria-label={
+              showCommunity
+                ? "Show official stations only"
+                : "Show official and community stations"
+            }
             aria-pressed={!showCommunity}
             className="aq-source-toggle inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-700/80 bg-zinc-950/90 px-3 text-xs font-bold text-zinc-100 shadow-xl backdrop-blur-md transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
           >
@@ -761,14 +813,14 @@ export default function AirQualityMap({
             ) : (
               <ShieldCheck aria-hidden="true" className="h-4 w-4 text-sky-300" />
             )}
-            {showCommunity ? "Official + Community" : "Official only"}
+            {showCommunity ? "Official + community" : "Official"}
           </button>,
           sourceToggleHost,
         )}
 
       <aside
         aria-label="Map legend"
-        className="aq-map-legend pointer-events-none absolute right-3 top-40 z-[900] hidden w-52 rounded-xl border border-zinc-700/80 bg-zinc-950/90 p-3 text-zinc-100 shadow-2xl backdrop-blur-md sm:right-4 sm:top-16 sm:block sm:w-60"
+        className="aq-map-legend pointer-events-none absolute right-3 top-16 z-[900] hidden w-52 rounded-lg border border-zinc-700/80 bg-zinc-950/90 p-3 text-zinc-100 shadow-2xl backdrop-blur-md sm:right-4 sm:block sm:w-60"
       >
         <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-white">
           {METRIC_LABELS[activeMetric]} concentration
@@ -790,10 +842,11 @@ export default function AirQualityMap({
         </ul>
         <div className="mt-2.5 flex gap-3 border-t border-zinc-800 pt-2.5 text-[11px] font-semibold">
           <span><b className="text-sky-300">O</b> Official</span>
-          <span><b className="text-amber-300">C</b> Community</span>
+          <span><b className="text-amber-300">P</b> Proposed</span>
         </div>
         <p className="mt-2 text-[10px] leading-4 text-zinc-300">
-          Ambient halo represents an interpolated spatial estimate.
+          Ambient halo is a derived spatial estimate. Proposed nodes are a
+          simulation, not measurements.
         </p>
       </aside>
     </div>

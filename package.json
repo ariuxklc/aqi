@@ -3,6 +3,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "import:official-aqi": "node scripts/seed-official-aqi.mjs --import",
+    "import:official-aqi:preview": "node scripts/seed-official-aqi.mjs",
+    "import:official-aqi:replace": "node scripts/seed-official-aqi.mjs --replace-official",
+    "import:official-aqi:verify": "node scripts/seed-official-aqi.mjs --verify",
     "start": "next start",
     "lint": "eslint ."
   },
@@ -14,7 +18,8 @@
     "next": "latest",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-leaflet": "^5.0.0"
+    "react-leaflet": "^5.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

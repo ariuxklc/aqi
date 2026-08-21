@@ -1,11 +1,10 @@
 import { Suspense } from "react";
 
 import DynamicAirQualityMap from "@/components/DynamicAirQualityMap";
+import Sidebar from "@/components/Sidebar";
 import TimeControls from "@/components/TimeControls";
 import { fetchAirQualityObservations } from "@/lib/air-quality/server";
 import type { AirQualityObservation } from "@/lib/air-quality/types";
-
-export const instant = false;
 
 interface PageSearchParams {
   timestamp?: string;
@@ -114,6 +113,8 @@ export default async function Page({
           noticeIsDevelopmentFixture={result.isDevelopmentFixture}
         />
       </div>
+
+      <Sidebar />
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1000] p-3 sm:p-4">
         <div className="pointer-events-auto mx-auto w-full max-w-7xl">

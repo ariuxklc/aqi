@@ -2,6 +2,8 @@ import "@/app/globals.css";
 
 import type { Metadata } from "next";
 
+import { ThemeProvider } from "@/components/ThemeProvider";
+
 export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
@@ -18,7 +20,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="light-mode">
-      <body>{children}</body>
+      <body>
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }

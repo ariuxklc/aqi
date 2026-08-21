@@ -4,8 +4,8 @@ import dynamic from "next/dynamic";
 
 import type { AirQualityObservation } from "@/lib/air-quality/types";
 
-const AirQualityMap = dynamic(
-  () => import("@/components/AirQualityMap"),
+const Map = dynamic(
+  () => import("@/components/Map"),
   { ssr: false },
 );
 
@@ -17,5 +17,5 @@ interface DynamicAirQualityMapProps {
 }
 
 export default function DynamicAirQualityMap(props: DynamicAirQualityMapProps) {
-  return <AirQualityMap {...props} />;
+  return <Map {...props} />;
 }

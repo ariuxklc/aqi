@@ -2,13 +2,12 @@
 
 import { Radio, RotateCcw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 const ULAANBAATAR_OFFSET_MS = 8 * 60 * 60 * 1000;
 const MAX_SNAPSHOT_MINUTES = 23 * 60 + 45;
 const WHEEL_ITEM_HEIGHT = 34;
 const WHEEL_PADDING_ITEMS = 1;
-const WHEEL_DRAG_SPEED = 1.12;
 
 interface UlaanbaatarDateTime {
   date: string;
@@ -124,7 +123,7 @@ interface WheelPickerProps {
   className?: string;
 }
 
-function WheelPicker({
+const WheelPicker = memo(function WheelPicker({
   label,
   options,
   value,
@@ -134,32 +133,41 @@ function WheelPicker({
 }: WheelPickerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollEndTimer = useRef<number | null>(null);
+  const rafId = useRef<number | null>(null);
+  const isUserInteracting = useRef(false);
   const isMouseDragging = useRef(false);
   const lastDragY = useRef(0);
-  const previousValue = useRef(value);
-  const settleTimer = useRef<number | null>(null);
-  const [previewIndex, setPreviewIndex] = useState(0);
-  const [hasSettled, setHasSettled] = useState(false);
+  const wheelResetTimer = useRef<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
   const selectedIndex = Math.max(
     0,
     options.findIndex((option) => option.value === value),
   );
+
+  const [previewIndex, setPreviewIndex] = useState(selectedIndex);
+  const lastIndexRef = useRef(selectedIndex);
+  const valueRef = useRef(value);
   const activeIndex = Math.min(options.length - 1, previewIndex);
   const activeValue = options[activeIndex]?.value ?? value;
 
   useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  useEffect(() => {
+    lastIndexRef.current = selectedIndex;
+    setPreviewIndex(selectedIndex);
+
+    if (isUserInteracting.current) return;
+
     const scroller = scrollRef.current;
     if (!scroller) return;
 
-    scroller.scrollTo({
-      top: selectedIndex * WHEEL_ITEM_HEIGHT,
-      behavior: "smooth",
-    });
-  }, [selectedIndex, options.length]);
-
-  useEffect(() => {
-    setPreviewIndex(selectedIndex);
+    const targetScrollTop = selectedIndex * WHEEL_ITEM_HEIGHT;
+    if (Math.abs(scroller.scrollTop - targetScrollTop) > 1) {
+      scroller.scrollTop = targetScrollTop;
+    }
   }, [selectedIndex, options.length]);
 
   useEffect(() => {
@@ -167,81 +175,147 @@ function WheelPicker({
       if (scrollEndTimer.current !== null) {
         window.clearTimeout(scrollEndTimer.current);
       }
-      if (settleTimer.current !== null) {
-        window.clearTimeout(settleTimer.current);
+      if (wheelResetTimer.current !== null) {
+        window.clearTimeout(wheelResetTimer.current);
+      }
+      if (rafId.current !== null) {
+        window.cancelAnimationFrame(rafId.current);
       }
     };
   }, []);
 
-  useEffect(() => {
-    if (previousValue.current === value) return;
+  function selectOptionAtIndex(index: number, smooth = true) {
+    if (options.length === 0) return;
 
-    previousValue.current = value;
-    setHasSettled(true);
-
-    if (settleTimer.current !== null) {
-      window.clearTimeout(settleTimer.current);
-    }
-    settleTimer.current = window.setTimeout(() => {
-      setHasSettled(false);
-    }, 190);
-  }, [value]);
-
-  function commitCenteredValue() {
-    const scroller = scrollRef.current;
-    if (!scroller || options.length === 0) return;
-
-    const nextIndex = Math.min(
-      options.length - 1,
-      Math.max(0, Math.round(scroller.scrollTop / WHEEL_ITEM_HEIGHT)),
-    );
+    const nextIndex = Math.min(options.length - 1, Math.max(0, index));
     const nextValue = options[nextIndex]?.value;
-
-    if (nextValue !== undefined && nextValue !== value) {
-      onChange(nextValue);
-    }
-  }
-
-  function getNearestIndex(scrollTop: number): number {
-    return Math.min(
-      options.length - 1,
-      Math.max(0, Math.round(scrollTop / WHEEL_ITEM_HEIGHT)),
-    );
-  }
-
-  function updatePreviewFromScroll() {
     const scroller = scrollRef.current;
-    if (!scroller || options.length === 0) return;
-    setPreviewIndex(getNearestIndex(scroller.scrollTop));
-  }
 
-  function snapToNearestValue() {
-    const scroller = scrollRef.current;
-    if (!scroller || options.length === 0) return;
-
-    const nextIndex = getNearestIndex(scroller.scrollTop);
-    const nextValue = options[nextIndex]?.value;
-
+    lastIndexRef.current = nextIndex;
     setPreviewIndex(nextIndex);
-    scroller.scrollTo({
-      top: nextIndex * WHEEL_ITEM_HEIGHT,
-      behavior: "smooth",
-    });
 
-    if (nextValue !== undefined && nextValue !== value) {
+    if (scroller) {
+      scroller.scrollTo({
+        top: nextIndex * WHEEL_ITEM_HEIGHT,
+        behavior: smooth ? "smooth" : "auto",
+      });
+    }
+
+    if (nextValue !== undefined && nextValue !== valueRef.current) {
+      valueRef.current = nextValue;
       onChange(nextValue);
     }
   }
 
   function handleScroll() {
-    updatePreviewFromScroll();
-    if (isMouseDragging.current) return;
+    const scroller = scrollRef.current;
+    if (!scroller || options.length === 0 || isMouseDragging.current) return;
+
+    isUserInteracting.current = true;
+
+    if (rafId.current !== null) {
+      window.cancelAnimationFrame(rafId.current);
+    }
+
+    rafId.current = window.requestAnimationFrame(() => {
+      if (!scroller || isMouseDragging.current) return;
+      const nextIndex = Math.min(
+        options.length - 1,
+        Math.max(0, Math.round(scroller.scrollTop / WHEEL_ITEM_HEIGHT)),
+      );
+
+      if (nextIndex !== lastIndexRef.current) {
+        lastIndexRef.current = nextIndex;
+        setPreviewIndex(nextIndex);
+      }
+    });
 
     if (scrollEndTimer.current !== null) {
       window.clearTimeout(scrollEndTimer.current);
     }
-    scrollEndTimer.current = window.setTimeout(snapToNearestValue, 80);
+
+    scrollEndTimer.current = window.setTimeout(() => {
+      isUserInteracting.current = false;
+      if (!scroller || isMouseDragging.current) return;
+
+      const settledIndex = Math.min(
+        options.length - 1,
+        Math.max(0, Math.round(scroller.scrollTop / WHEEL_ITEM_HEIGHT)),
+      );
+      const settledValue = options[settledIndex]?.value;
+
+      if (settledValue !== undefined && settledValue !== valueRef.current) {
+        valueRef.current = settledValue;
+        onChange(settledValue);
+      }
+    }, 120);
   }
+
+  function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
+    if (options.length === 0) return;
+
+    isUserInteracting.current = true;
+
+    // Detect discrete notched mouse wheel (deltaMode 1=lines or 2=pages, or standard 100/120px notch deltas)
+    const isDiscreteNotch =
+      event.deltaMode !== 0 ||
+      (Math.abs(event.deltaY) >= 80 && event.deltaY % 20 === 0);
+
+    if (isDiscreteNotch) {
+      event.preventDefault();
+      const step = event.deltaY > 0 ? 1 : -1;
+      const nextIndex = Math.min(
+        options.length - 1,
+        Math.max(0, lastIndexRef.current + step),
+      );
+      if (nextIndex !== lastIndexRef.current) {
+        selectOptionAtIndex(nextIndex, true);
+      }
+
+      if (wheelResetTimer.current !== null) {
+        window.clearTimeout(wheelResetTimer.current);
+      }
+      wheelResetTimer.current = window.setTimeout(() => {
+        isUserInteracting.current = false;
+      }, 180);
+      return;
+    }
+
+    // For laptop trackpads: do NOT preventDefault.
+    // Let the browser handle fluid native momentum scrolling with GPU acceleration.
+    if (wheelResetTimer.current !== null) {
+      window.clearTimeout(wheelResetTimer.current);
+    }
+    wheelResetTimer.current = window.setTimeout(() => {
+      isUserInteracting.current = false;
+    }, 180);
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        selectOptionAtIndex(lastIndexRef.current + 1, true);
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        selectOptionAtIndex(lastIndexRef.current - 1, true);
+        break;
+      case "Home":
+        event.preventDefault();
+        selectOptionAtIndex(0, true);
+        break;
+      case "End":
+        event.preventDefault();
+        selectOptionAtIndex(options.length - 1, true);
+        break;
+    }
+  }
+
+  const hasDraggedDistance = useRef(0);
+  const dragStartY = useRef(0);
+  const lastDragTime = useRef(0);
+  const dragVelocity = useRef(0);
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (event.pointerType === "touch" || event.button !== 0) return;
@@ -249,22 +323,41 @@ function WheelPicker({
     const scroller = scrollRef.current;
     if (!scroller) return;
 
+    isUserInteracting.current = true;
     isMouseDragging.current = true;
     setIsDragging(true);
+    hasDraggedDistance.current = 0;
+    dragStartY.current = event.clientY;
     lastDragY.current = event.clientY;
+    lastDragTime.current = performance.now();
+    dragVelocity.current = 0;
+
     scroller.setPointerCapture(event.pointerId);
-    event.preventDefault();
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
     const scroller = scrollRef.current;
     if (!isMouseDragging.current || !scroller) return;
 
-    const deltaY = (lastDragY.current - event.clientY) * WHEEL_DRAG_SPEED;
+    const dy = lastDragY.current - event.clientY;
+    hasDraggedDistance.current += Math.abs(event.clientY - dragStartY.current);
+
+    const now = performance.now();
+    const dt = Math.max(1, now - lastDragTime.current);
+    dragVelocity.current = dy / dt;
     lastDragY.current = event.clientY;
-    scroller.scrollTop += deltaY;
-    updatePreviewFromScroll();
-    event.preventDefault();
+    lastDragTime.current = now;
+
+    scroller.scrollTop += dy;
+
+    const nextIndex = Math.min(
+      options.length - 1,
+      Math.max(0, Math.round(scroller.scrollTop / WHEEL_ITEM_HEIGHT)),
+    );
+    if (nextIndex !== lastIndexRef.current) {
+      lastIndexRef.current = nextIndex;
+      setPreviewIndex(nextIndex);
+    }
   }
 
   function finishPointerDrag(event: React.PointerEvent<HTMLDivElement>) {
@@ -276,7 +369,28 @@ function WheelPicker({
     if (scroller.hasPointerCapture(event.pointerId)) {
       scroller.releasePointerCapture(event.pointerId);
     }
-    snapToNearestValue();
+
+    if (hasDraggedDistance.current <= 4) {
+      isUserInteracting.current = false;
+      return;
+    }
+
+    const clampedFlick = Math.max(-120, Math.min(120, dragVelocity.current * 40));
+    const targetScrollTop = scroller.scrollTop + clampedFlick;
+    const nextIndex = Math.min(
+      options.length - 1,
+      Math.max(0, Math.round(targetScrollTop / WHEEL_ITEM_HEIGHT)),
+    );
+    selectOptionAtIndex(nextIndex, true);
+
+    setTimeout(() => {
+      isUserInteracting.current = false;
+    }, 180);
+  }
+
+  function handleItemClick(optionIndex: number) {
+    if (hasDraggedDistance.current > 4) return;
+    selectOptionAtIndex(optionIndex, true);
   }
 
   return (
@@ -291,7 +405,8 @@ function WheelPicker({
         aria-activedescendant={`${ariaLabel}-${activeValue}`}
         tabIndex={0}
         onScroll={handleScroll}
-        onBlur={commitCenteredValue}
+        onWheel={handleWheel}
+        onKeyDown={handleKeyDown}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={finishPointerDrag}
@@ -306,19 +421,20 @@ function WheelPicker({
           const distance = Math.abs(optionIndex - activeIndex);
           const isSelected = optionIndex === activeIndex;
 
+          const distanceClass = isSelected
+            ? "aq-wheel-item--active scale-100 text-[22px] font-black text-emerald-400 opacity-100"
+            : distance === 1
+              ? "aq-wheel-item--near scale-90 text-[13px] text-zinc-400 opacity-60 font-semibold"
+              : "aq-wheel-item--far scale-75 text-[11px] text-zinc-500 opacity-25 font-normal";
+
           return (
             <div
               id={`${ariaLabel}-${option.value}`}
               key={option.value}
               role="option"
               aria-selected={isSelected}
-              className={`aq-wheel-item flex items-center justify-center font-semibold transition-all duration-150 ${
-                isSelected
-                  ? `scale-100 text-[22px] font-black text-emerald-400 opacity-100 ${hasSettled ? "aq-wheel-item--settled" : ""}`
-                  : distance === 1
-                    ? "scale-90 text-[13px] text-gray-400 opacity-40"
-                    : "scale-75 text-[11px] text-gray-400 opacity-15"
-              }`}
+              onClick={() => handleItemClick(optionIndex)}
+              className={`aq-wheel-item flex cursor-pointer select-none items-center justify-center transition-all duration-100 ${distanceClass}`}
             >
               {option.label}
             </div>
@@ -331,7 +447,7 @@ function WheelPicker({
       </div>
     </div>
   );
-}
+});
 
 export default function TimeControls() {
   const router = useRouter();
@@ -498,7 +614,21 @@ export default function TimeControls() {
     lastCommittedTimestamp.current = selectedTimestamp;
   }, [selectedTimestamp]);
 
-  function setHistoricalTime(date: string, minutes: number) {
+  const routerDebounceTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (routerDebounceTimer.current !== null) {
+        window.clearTimeout(routerDebounceTimer.current);
+      }
+    };
+  }, []);
+
+  function setHistoricalTime(
+    date: string,
+    minutes: number,
+    immediate = false,
+  ) {
     if (!date) return;
     const timestamp = toTimestamp(date, minutes);
 
@@ -507,10 +637,24 @@ export default function TimeControls() {
       return;
     }
 
-    lastCommittedTimestamp.current = timestamp;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("timestamp", timestamp);
-    router.replace(`/?${params.toString()}`, { scroll: false });
+    if (routerDebounceTimer.current !== null) {
+      window.clearTimeout(routerDebounceTimer.current);
+    }
+
+    const commit = () => {
+      lastCommittedTimestamp.current = timestamp;
+      setHasPendingScrub(false);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("timestamp", timestamp);
+      router.replace(`/?${params.toString()}`, { scroll: false });
+    };
+
+    if (immediate) {
+      commit();
+    } else {
+      setHasPendingScrub(true);
+      routerDebounceTimer.current = window.setTimeout(commit, 350);
+    }
   }
 
   function handleDateChange(date: string) {
@@ -522,7 +666,7 @@ export default function TimeControls() {
     );
     setSelectedDate(date);
     setSelectedMinutes(nextMinutes);
-    setHistoricalTime(date, nextMinutes);
+    setHistoricalTime(date, nextMinutes, false);
   }
 
   function handleDateWheelChange(
@@ -549,10 +693,13 @@ export default function TimeControls() {
     );
     setSelectedMinutes(nextMinutes);
     setHasPendingScrub(true);
-    setHistoricalTime(selectedDate, nextMinutes);
+    setHistoricalTime(selectedDate, nextMinutes, false);
   }
 
   function returnToLiveMode() {
+    if (routerDebounceTimer.current !== null) {
+      window.clearTimeout(routerDebounceTimer.current);
+    }
     setHasPendingScrub(false);
     lastCommittedTimestamp.current = null;
     const params = new URLSearchParams(searchParams.toString());
@@ -636,7 +783,7 @@ export default function TimeControls() {
           <button
             type="button"
             onClick={returnToLiveMode}
-            className="inline-flex h-6.5 items-center justify-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 text-[11px] font-bold text-emerald-100 shadow-sm shadow-emerald-950/20 transition hover:border-emerald-300/60 hover:bg-emerald-400/15 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:ring-offset-zinc-950"
+            className="aq-live-button inline-flex h-6.5 items-center justify-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 text-[11px] font-bold text-emerald-100 shadow-sm shadow-emerald-950/20 transition hover:border-emerald-300/60 hover:bg-emerald-400/15 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:ring-offset-zinc-950"
           >
             {isViewingSnapshot ? (
               <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />

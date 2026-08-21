@@ -1,4 +1,5 @@
 export type SourceType = "official" | "community";
+export type ObservationDataStatus = "observed" | "simulated";
 
 export interface AirQualityObservation {
   sourceType: SourceType;
@@ -13,4 +14,6 @@ export interface AirQualityObservation {
   so2?: number | null;
   observedAt: string;
   stationName?: string;
+  /** Explicitly identifies scenario data so it is never presented as a measured reading. */
+  dataStatus?: ObservationDataStatus;
 }
