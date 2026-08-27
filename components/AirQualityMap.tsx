@@ -640,7 +640,7 @@ export default function AirQualityMap({
 }: AirQualityMapProps) {
   const [activeMetric, setActiveMetric] =
     useState<AirQualityMetric>("pm25");
-  const [showCommunity, setShowCommunity] = useState(true);
+  const [showCommunity, setShowCommunity] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
   const [sourceToggleHost, setSourceToggleHost] =

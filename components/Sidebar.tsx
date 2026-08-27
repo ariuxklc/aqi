@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useTheme } from "@/components/ThemeProvider";
 
@@ -38,9 +38,15 @@ const NAVIGATION: readonly NavigationItem[] = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const isLightTheme = theme === "light";
+
+  useEffect(() => {
+    if (window.innerWidth >= 640) {
+      setIsOpen(true);
+    }
+  }, []);
 
   return (
     <aside className="pointer-events-none absolute left-3 top-3 z-[1000]">
@@ -77,6 +83,11 @@ export default function Sidebar() {
                   href={href}
                   aria-current={isActive ? "page" : undefined}
                   tabIndex={isOpen ? 0 : -1}
+                  onClick={() => {
+                    if (window.innerWidth < 640) {
+                      setIsOpen(false);
+                    }
+                  }}
                   className={`group flex items-center gap-3 rounded-md px-2.5 py-2.5 transition focus:outline-none focus:ring-2 focus:ring-cyan-400 ${
                     isActive
                       ? "aq-sidebar-link--active bg-cyan-400 text-zinc-950 shadow-lg shadow-cyan-950/20"

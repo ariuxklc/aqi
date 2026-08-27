@@ -478,7 +478,7 @@ export default function TimeControls() {
     },
   );
   const [hasPendingScrub, setHasPendingScrub] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [hasMounted, setHasMounted] = useState(false);
   const [nowInUlaanbaatar, setNowInUlaanbaatar] = useState(() =>
     getUlaanbaatarDateTime(),
