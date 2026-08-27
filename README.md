@@ -26,9 +26,10 @@ Create `.env.local` with:
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_CARTO_API_KEY=cb1_2a2s_1_794f31f70af4528163bdac67
 ```
 
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` may be used instead of `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. The server client accepts either public-key name. Do not expose a Supabase service-role key.
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` may be used instead of `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. The server client accepts either public-key name. Do not expose a Supabase service-role key. `NEXT_PUBLIC_CARTO_API_KEY` can be used to override the default CARTO basemap API key.
 
 ## Database
 

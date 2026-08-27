@@ -36,18 +36,24 @@ interface AirQualityMapProps {
   noticeIsDevelopmentFixture?: boolean;
 }
 
+
 const MAP_CENTER: [number, number] = [47.9184, 106.9177];
 const MAX_CANVAS_PIXEL_RATIO = 2;
 const METERS_PER_LATITUDE_DEGREE = 111_320;
 const DEFAULT_MAP_ZOOM = 12;
 const COORDINATE_GROUPING_FACTOR = 10_000;
 const MARKER_DISPERSAL_RADIUS_DEGREES = 0.0002;
+const DEFAULT_CARTO_API_KEY = "cb1_2a2s_1_794f31f70af4528163bdac67";
+const CARTO_API_KEY =
+  process.env.NEXT_PUBLIC_CARTO_API_KEY || DEFAULT_CARTO_API_KEY;
+const CARTO_KEY_PARAM = CARTO_API_KEY ? `?key=${CARTO_API_KEY}` : "";
+
 const DARK_TILE_URL =
-  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+  `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${CARTO_KEY_PARAM}`;
 const DARK_TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 const LIGHT_TILE_URL =
-  "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+  `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${CARTO_KEY_PARAM}`;
 const LIGHT_TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 const METRIC_LABELS: Record<AirQualityMetric, string> = {
@@ -715,6 +721,7 @@ export default function AirQualityMap({
               className={isLightTheme ? "aq-basemap-light" : "aq-basemap-dark"}
               opacity={isLightTheme ? 1 : 0.88}
               maxZoom={20}
+              subdomains="abcd"
             />
             <ZoomControl position="bottomright" />
             <MetricAuraLayer
