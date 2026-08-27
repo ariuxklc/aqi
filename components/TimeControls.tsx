@@ -1,6 +1,6 @@
 "use client";
 
-import { Radio, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronUp, Radio, RotateCcw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
@@ -569,7 +569,9 @@ export default function TimeControls() {
 
     const updateMapControlOffset = () => {
       const controlsTop = controlsElement.getBoundingClientRect().top;
-      const bottomOffset = Math.max(0, window.innerHeight - controlsTop + 10);
+      const viewportHeight =
+        window.visualViewport?.height ?? window.innerHeight;
+      const bottomOffset = Math.max(0, viewportHeight - controlsTop + 10);
       document.documentElement.style.setProperty(
         "--aq-map-control-bottom",
         `${bottomOffset}px`,
@@ -579,11 +581,21 @@ export default function TimeControls() {
     const resizeObserver = new ResizeObserver(updateMapControlOffset);
     resizeObserver.observe(controlsElement);
     window.addEventListener("resize", updateMapControlOffset);
+    window.visualViewport?.addEventListener("resize", updateMapControlOffset);
+    window.visualViewport?.addEventListener("scroll", updateMapControlOffset);
     updateMapControlOffset();
 
     return () => {
       resizeObserver.disconnect();
       window.removeEventListener("resize", updateMapControlOffset);
+      window.visualViewport?.removeEventListener(
+        "resize",
+        updateMapControlOffset,
+      );
+      window.visualViewport?.removeEventListener(
+        "scroll",
+        updateMapControlOffset,
+      );
       document.documentElement.style.removeProperty(
         "--aq-map-control-bottom",
       );
@@ -761,12 +773,28 @@ export default function TimeControls() {
         }}
         aria-expanded={!isCollapsed}
         aria-controls="historical-control-content"
-        className={`aq-drawer-toggle mx-auto flex h-6 w-16 touch-none items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-400 sm:hidden ${isCollapsed ? "" : "mb-2"}`}
+        className={`aq-drawer-toggle flex w-full touch-none items-center justify-between rounded-lg px-2 py-1 text-left focus:outline-none focus:ring-2 focus:ring-emerald-400 sm:hidden ${
+          isCollapsed ? "" : "mb-2 border-b border-zinc-800/80 pb-2"
+        }`}
       >
-        <span aria-hidden="true" className="h-1.5 w-10 rounded-full bg-zinc-500" />
-        <span className="sr-only">
-          {isCollapsed ? "Show time controls" : "Hide time controls"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="aq-drawer-handle flex h-1.5 w-6 items-center justify-center rounded-full bg-zinc-500"
+          />
+          <span className="text-xs font-black tabular-nums text-zinc-100">
+            {selectedDate} <span className="text-zinc-500">·</span>{" "}
+            {formatMinutes(selectedMinutes)}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+          <span>{isCollapsed ? "Time controls" : "Minimize"}</span>
+          {isCollapsed ? (
+            <ChevronUp aria-hidden="true" className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
+          )}
+        </div>
       </button>
 
       <div

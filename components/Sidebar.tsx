@@ -49,7 +49,7 @@ export default function Sidebar() {
   }, []);
 
   return (
-    <aside className="pointer-events-none absolute left-3 top-3 z-[1000]">
+    <aside className="pointer-events-none absolute left-3 top-[calc(0.75rem+env(safe-area-inset-top,0px))] z-[1000]">
       <button
         type="button"
         onClick={() => setIsOpen((current) => !current)}

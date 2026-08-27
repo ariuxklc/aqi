@@ -104,7 +104,7 @@ export default async function Page({
   );
 
   return (
-    <main className="relative h-screen min-h-[36rem] w-full overflow-hidden bg-zinc-100">
+    <main className="relative h-screen h-[100dvh] w-full overflow-hidden bg-zinc-100">
       <div className="absolute inset-0">
         <DynamicAirQualityMap
           observations={result.observations}
@@ -116,7 +116,7 @@ export default async function Page({
 
       <Sidebar />
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1000] p-3 sm:p-4">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1000] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] sm:p-4 sm:pb-4">
         <div className="pointer-events-auto mx-auto w-full max-w-7xl">
           <Suspense
             fallback={

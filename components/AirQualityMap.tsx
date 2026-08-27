@@ -739,7 +739,7 @@ export default function AirQualityMap({
 
       <section
         aria-label="Map status"
-        className="aq-map-status pointer-events-none absolute left-3 top-16 z-[900] max-w-[calc(100%-1.5rem)] rounded-lg border border-zinc-700/80 bg-zinc-950/90 px-2.5 py-1.5 text-xs text-zinc-200 shadow-xl backdrop-blur-md sm:left-16 sm:top-3 sm:max-w-none"
+        className="aq-map-status pointer-events-none absolute left-3 top-[calc(3.75rem+env(safe-area-inset-top,0px))] z-[900] max-w-[calc(100%-1.5rem)] rounded-lg border border-zinc-700/80 bg-zinc-950/90 px-2.5 py-1.5 text-xs text-zinc-200 shadow-xl backdrop-blur-md sm:left-16 sm:top-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:max-w-none"
       >
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="inline-flex items-center gap-1.5 font-semibold">
@@ -774,7 +774,7 @@ export default function AirQualityMap({
         )}
       </section>
 
-      <div className="absolute right-3 top-3 z-[900] sm:right-4">
+      <div className="absolute right-3 top-[calc(0.75rem+env(safe-area-inset-top,0px))] z-[900] sm:right-4">
         <div
           role="group"
           aria-label="Heatmap metric"
@@ -813,14 +813,14 @@ export default function AirQualityMap({
                 : "Show official and community stations"
             }
             aria-pressed={!showCommunity}
-            className="aq-source-toggle inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-700/80 bg-zinc-950/90 px-3 text-xs font-bold text-zinc-100 shadow-xl backdrop-blur-md transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            className="aq-source-toggle inline-flex h-10 items-center gap-2 rounded-lg border border-zinc-700/80 bg-zinc-950/95 px-3 text-xs font-bold text-zinc-100 shadow-xl shadow-black/40 backdrop-blur-md transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-400 active:scale-95"
           >
             {showCommunity ? (
-              <Users aria-hidden="true" className="h-4 w-4 text-amber-300" />
+              <Users aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-400" />
             ) : (
-              <ShieldCheck aria-hidden="true" className="h-4 w-4 text-sky-300" />
+              <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-sky-400" />
             )}
-            {showCommunity ? "Official + community" : "Official"}
+            <span>{showCommunity ? "Official + community" : "Official only"}</span>
           </button>,
           sourceToggleHost,
         )}
